@@ -133,6 +133,12 @@ final class LibraryService {
         }
     }
 
+    func renameBook(id: UUID, title: String) {
+        guard let index = books.firstIndex(where: { $0.id == id }) else { return }
+        books[index].title = title
+        saveBooks()
+    }
+
     func position(for bookID: UUID) -> ReadingPosition {
         loadPositions()[bookID.uuidString] ?? ReadingPosition(virtualPageIndex: 0, progress: 0)
     }

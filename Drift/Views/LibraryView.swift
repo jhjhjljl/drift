@@ -5,6 +5,8 @@ struct LibraryView: View {
     @Environment(AppModel.self) private var appModel
     @State private var isImporting = false
     @State private var importError: String?
+    @State private var renamingBookID: UUID?
+    @State private var renameDraft = ""
 
     var body: some View {
         NavigationStack {
@@ -31,8 +33,26 @@ struct LibraryView: View {
                                 .padding(.vertical, 4)
                             }
                             .disabled(appModel.isImporting)
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button("Rename") {
+                                    startRename(for: book)
+                                }
+                                .tint(.blue)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Delete", role: .destructive) {
+                                    appModel.library.removeBook(id: book.id)
+                                }
+                            }
+                            .contextMenu {
+                                Button("Rename") {
+                                    startRename(for: book)
+                                }
+                                Button("Delete", role: .destructive) {
+                                    appModel.library.removeBook(id: book.id)
+                                }
+                            }
                         }
-                        .onDelete(perform: deleteBooks)
                     }
                     .listStyle(.plain)
                 }
@@ -88,6 +108,17 @@ struct LibraryView: View {
                     ImportOverlay()
                 }
             }
+            .sheet(isPresented: Binding(
+                get: { renamingBookID != nil },
+                set: { if !$0 { cancelRename() } }
+            )) {
+                RenameBookSheet(
+                    title: $renameDraft,
+                    originalTitle: currentRenameOriginalTitle,
+                    onCancel: cancelRename,
+                    onSave: commitRename
+                )
+            }
         }
     }
 
@@ -95,11 +126,29 @@ struct LibraryView: View {
         await appModel.importPDF(from: url)
     }
 
-    private func deleteBooks(at offsets: IndexSet) {
-        for index in offsets {
-            let id = appModel.library.books[index].id
-            appModel.library.removeBook(id: id)
-        }
+    private var currentRenameOriginalTitle: String {
+        guard let id = renamingBookID,
+              let book = appModel.library.book(id: id) else { return "" }
+        return book.title
+    }
+
+    private func startRename(for book: Book) {
+        renamingBookID = book.id
+        renameDraft = book.title
+    }
+
+    private func cancelRename() {
+        renamingBookID = nil
+        renameDraft = ""
+    }
+
+    private func commitRename() {
+        guard let id = renamingBookID else { return }
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let book = appModel.library.book(id: id), book.title != trimmed else { return }
+        appModel.library.renameBook(id: id, title: trimmed)
+        cancelRename()
     }
 }
 
@@ -117,6 +166,42 @@ private struct ImportOverlay: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 20)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+}
+
+private struct RenameBookSheet: View {
+    @Binding var title: String
+    let originalTitle: String
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    private var trimmedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSaveDisabled: Bool {
+        trimmedTitle.isEmpty || trimmedTitle == originalTitle
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Book title", text: $title)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+            }
+            .navigationTitle("Rename Book")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: onSave)
+                        .disabled(isSaveDisabled)
+                }
+            }
         }
     }
 }
