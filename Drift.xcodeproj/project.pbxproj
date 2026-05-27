@@ -34,6 +34,7 @@
 		B10000000000000000000002 /* PDFContentExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* PDFContentExtractorTests.swift */; };
 		B10000000000000000000003 /* ReflowPaginatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* ReflowPaginatorTests.swift */; };
 		B10000000000000000000004 /* ReaderPositionLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* ReaderPositionLabelTests.swift */; };
+		B10000000000000000000005 /* BookOpenPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* BookOpenPipelineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +68,7 @@
 		B20000000000000000000002 /* PDFContentExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFContentExtractorTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* ReflowPaginatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflowPaginatorTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000004 /* ReaderPositionLabelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderPositionLabelTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000005 /* BookOpenPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookOpenPipelineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,6 +115,7 @@
 				B20000000000000000000002 /* PDFContentExtractorTests.swift */,
 				B20000000000000000000003 /* ReflowPaginatorTests.swift */,
 				B20000000000000000000004 /* ReaderPositionLabelTests.swift */,
+				B20000000000000000000005 /* BookOpenPipelineTests.swift */,
 			);
 			path = DriftTests;
 			sourceTree = "<group>";
@@ -329,6 +332,7 @@
 				B10000000000000000000002 /* PDFContentExtractorTests.swift in Sources */,
 				B10000000000000000000003 /* ReflowPaginatorTests.swift in Sources */,
 				B10000000000000000000004 /* ReaderPositionLabelTests.swift in Sources */,
+				B10000000000000000000005 /* BookOpenPipelineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

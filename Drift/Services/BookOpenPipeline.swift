@@ -45,6 +45,14 @@ enum BookOpenPipeline {
     static func clampedIndex(_ index: Int, session: ReaderSession) -> Int {
         min(index, max(session.totalScreens - 1, 0))
     }
+
+    /// Page to show after pagination finishes. Prefer the saved open target unless the reader
+    /// visibly moved to another page while screens were still streaming in.
+    nonisolated static func completionPageIndex(virtualIndex: Int, openTargetIndex: Int) -> Int {
+        if virtualIndex == openTargetIndex { return openTargetIndex }
+        if virtualIndex == 0, openTargetIndex != 0 { return openTargetIndex }
+        return virtualIndex
+    }
 }
 
 enum BookOpenError: Error {

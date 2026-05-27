@@ -45,6 +45,7 @@ struct ReaderView: View {
     @State private var viewportSize: CGSize = .zero
     @State private var loadFailed = false
     @State private var loadedForSize: CGSize = .zero
+    @State private var loadGeneration = 0
     @State private var loadTask: Task<Void, Never>?
     @State private var isDragging = false
     @State private var gestureStartOverlayVisible = false
@@ -57,7 +58,7 @@ struct ReaderView: View {
 
     private var canShowReader: Bool {
         guard let session else { return false }
-        return session.isPageReady(at: openTargetIndex)
+        return session.isPageReady(at: virtualIndex)
     }
 
     var body: some View {
@@ -269,12 +270,15 @@ struct ReaderView: View {
         guard size != loadedForSize || session == nil else { return }
 
         loadTask?.cancel()
+        loadGeneration += 1
+        let generation = loadGeneration
         loadTask = Task {
-            await loadSession(size: size)
+            await loadSession(size: size, generation: generation)
         }
     }
 
-    private func loadSession(size: CGSize) async {
+    private func loadSession(size: CGSize, generation: Int) async {
+        func isCurrentLoad() -> Bool { generation == loadGeneration }
         #if DEBUG
         OpenDiagnostics.beginOpen()
         let openStart = CFAbsoluteTimeGetCurrent()
@@ -284,6 +288,7 @@ struct ReaderView: View {
         loadFailed = false
 
         guard appModel.library.hasPDF(for: book) else {
+            guard isCurrentLoad() else { return }
             session = nil
             loadFailed = true
             return
@@ -299,9 +304,11 @@ struct ReaderView: View {
                 book: book,
                 library: appModel.library
             )
+            guard isCurrentLoad() else { return }
+
             openTargetIndex = prepared.openTargetIndex
-            session = prepared.session
             setPageIndexWithoutAnimation(openTargetIndex)
+            session = prepared.session
 
             #if DEBUG
             let paginationStart = CFAbsoluteTimeGetCurrent()
@@ -312,10 +319,9 @@ struct ReaderView: View {
             OpenDiagnostics.log("open (total)", ms: OpenDiagnostics.elapsed(since: pipelineStart))
             #endif
 
-            guard !Task.isCancelled else {
-                session = nil
-                return
-            }
+            guard isCurrentLoad() else { return }
+
+            guard !Task.isCancelled else { return }
 
             guard loaded else {
                 session = nil
@@ -323,15 +329,15 @@ struct ReaderView: View {
                 return
             }
 
-            // If the reader progressed while pages were streaming in, keep that location instead
-            // of snapping back to the original open target when loading completes.
-            let completionTargetIndex = virtualIndex == openTargetIndex
-                ? openTargetIndex
-                : virtualIndex
+            let completionTargetIndex = BookOpenPipeline.completionPageIndex(
+                virtualIndex: virtualIndex,
+                openTargetIndex: openTargetIndex
+            )
             setPageIndexWithoutAnimation(
                 BookOpenPipeline.clampedIndex(completionTargetIndex, session: prepared.session)
             )
         } catch {
+            guard isCurrentLoad() else { return }
             session = nil
             loadFailed = true
         }
