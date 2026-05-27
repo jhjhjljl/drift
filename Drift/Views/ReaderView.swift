@@ -5,11 +5,32 @@ private enum ReaderPaging {
     static let tapMovementThreshold: CGFloat = 15
     static let commitDistanceFraction: CGFloat = 0.28
     static let commitVelocity: CGFloat = 450
-    static let rubberBandFactor: CGFloat = 0.35
+    static let pageTurnDuration: TimeInterval = 0.2
+    static var pageTurnAnimation: Animation { .easeInOut(duration: pageTurnDuration) }
 }
 
 private enum ReaderOverlayMotion {
     static let animation = Animation.easeOut(duration: 0.15)
+}
+
+/// Drives opacity through `animatableData` so UIKit page views crossfade instead of popping.
+private struct AnimatableOpacity: AnimatableModifier {
+    var opacity: Double
+
+    var animatableData: Double {
+        get { opacity }
+        set { opacity = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.opacity(opacity)
+    }
+}
+
+private extension View {
+    func animatableOpacity(_ opacity: Double) -> some View {
+        modifier(AnimatableOpacity(opacity: opacity))
+    }
 }
 
 struct ReaderView: View {
@@ -25,9 +46,12 @@ struct ReaderView: View {
     @State private var loadFailed = false
     @State private var loadedForSize: CGSize = .zero
     @State private var loadTask: Task<Void, Never>?
-    @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
     @State private var gestureStartOverlayVisible = false
+    /// Outgoing page kept in the stack while crossfading to the new `virtualIndex`.
+    @State private var crossfadeFromIndex: Int?
+    @State private var crossfadeProgress: Double = 1
+    @State private var isCrossfading = false
     /// Saved reading position we're opening to; reader appears once this screen is paginated.
     @State private var openTargetIndex = 0
 
@@ -97,23 +121,18 @@ struct ReaderView: View {
 
     @ViewBuilder
     private func pagingSurface(session: ReaderSession, size: CGSize) -> some View {
-        let pageHeight = size.height
-
         ZStack {
-            if virtualIndex > 0 {
-                pageView(session: session, index: virtualIndex - 1, size: size)
-                    .offset(y: -pageHeight + dragOffset)
+            if let fromIndex = crossfadeFromIndex {
+                pageView(session: session, index: fromIndex, size: size)
+                    .animatableOpacity(1 - crossfadeProgress)
+                    .allowsHitTesting(false)
             }
 
             pageView(session: session, index: virtualIndex, size: size)
-                .offset(y: dragOffset)
-
-            if canTurnForward(session: session) {
-                pageView(session: session, index: virtualIndex + 1, size: size)
-                    .offset(y: pageHeight + dragOffset)
-            }
+                .animatableOpacity(crossfadeFromIndex == nil ? 1 : crossfadeProgress)
         }
-        .frame(width: size.width, height: pageHeight)
+        .compositingGroup()
+        .frame(width: size.width, height: size.height)
         .clipped()
     }
 
@@ -162,44 +181,18 @@ struct ReaderView: View {
 
     private func pageDragGesture(session: ReaderSession?, pageHeight: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
-            .onChanged { value in
+            .onChanged { _ in
                 guard !loadFailed, let session, session.isReady else { return }
                 if !isDragging {
                     isDragging = true
                     gestureStartOverlayVisible = showOverlay
                 }
-                dragOffset = clampedDragOffset(
-                    value.translation.height,
-                    session: session,
-                    pageHeight: pageHeight
-                )
             }
             .onEnded { value in
                 isDragging = false
                 guard !loadFailed, let session, session.isReady else { return }
                 handleDragEnd(value: value, session: session, pageHeight: pageHeight)
             }
-    }
-
-    private func clampedDragOffset(
-        _ raw: CGFloat,
-        session: ReaderSession,
-        pageHeight: CGFloat
-    ) -> CGFloat {
-        let canPrev = virtualIndex > 0
-        let canNext = canTurnForward(session: session)
-
-        if raw > 0, !canPrev {
-            return rubberBand(raw)
-        }
-        if raw < 0, !canNext {
-            return -rubberBand(-raw)
-        }
-        return raw
-    }
-
-    private func rubberBand(_ distance: CGFloat) -> CGFloat {
-        distance * ReaderPaging.rubberBandFactor
     }
 
     private func canTurnForward(session: ReaderSession) -> Bool {
@@ -212,7 +205,6 @@ struct ReaderView: View {
         let velocity = value.velocity.height
 
         if isStrictTap(translation: value.translation, velocity: value.velocity) {
-            snapBack()
             if !showOverlay {
                 presentOverlay()
             }
@@ -221,7 +213,6 @@ struct ReaderView: View {
 
         if gestureStartOverlayVisible {
             hideOverlay()
-            snapBack()
             return
         }
 
@@ -230,11 +221,9 @@ struct ReaderView: View {
         let wantsPrev = translation > commitDistance || velocity > ReaderPaging.commitVelocity
 
         if wantsNext, canTurnForward(session: session) {
-            commitPage(forward: true, session: session, pageHeight: pageHeight)
+            turnPage(forward: true, session: session)
         } else if wantsPrev, virtualIndex > 0 {
-            commitPage(forward: false, session: session, pageHeight: pageHeight)
-        } else {
-            snapBack()
+            turnPage(forward: false, session: session)
         }
     }
 
@@ -244,29 +233,34 @@ struct ReaderView: View {
         return movement < ReaderPaging.tapMovementThreshold && speed < ReaderPaging.commitVelocity
     }
 
-    private func snapBack() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            dragOffset = 0
-        }
-    }
-
-    private func commitPage(forward: Bool, session: ReaderSession, pageHeight: CGFloat) {
+    private func turnPage(forward: Bool, session: ReaderSession) {
+        guard !isCrossfading else { return }
         hideOverlay()
-        let target = forward ? -pageHeight : pageHeight
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            dragOffset = target
+
+        let fromIndex = virtualIndex
+        let nextIndex = forward ? fromIndex + 1 : fromIndex - 1
+        guard nextIndex >= 0, nextIndex < session.totalScreens else { return }
+
+        isCrossfading = true
+        crossfadeFromIndex = fromIndex
+        virtualIndex = nextIndex
+
+        var reset = Transaction()
+        reset.disablesAnimations = true
+        withTransaction(reset) {
+            crossfadeProgress = 0
         }
 
-        let nextIndex = forward ? virtualIndex + 1 : virtualIndex - 1
+        withAnimation(ReaderPaging.pageTurnAnimation) {
+            crossfadeProgress = 1
+        }
+        persistPosition(session: session)
+
+        let duration = ReaderPaging.pageTurnDuration
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard nextIndex >= 0, nextIndex < session.totalScreens else {
-                dragOffset = 0
-                return
-            }
-            virtualIndex = nextIndex
-            dragOffset = 0
-            persistPosition(session: session)
+            try? await Task.sleep(for: .seconds(duration))
+            crossfadeFromIndex = nil
+            isCrossfading = false
         }
     }
 
@@ -288,7 +282,6 @@ struct ReaderView: View {
 
         viewportSize = size
         loadFailed = false
-        dragOffset = 0
 
         guard appModel.library.hasPDF(for: book) else {
             session = nil
@@ -307,8 +300,8 @@ struct ReaderView: View {
                 library: appModel.library
             )
             openTargetIndex = prepared.openTargetIndex
-            virtualIndex = openTargetIndex
             session = prepared.session
+            setPageIndexWithoutAnimation(openTargetIndex)
 
             #if DEBUG
             let paginationStart = CFAbsoluteTimeGetCurrent()
@@ -330,11 +323,23 @@ struct ReaderView: View {
                 return
             }
 
-            virtualIndex = BookOpenPipeline.clampedIndex(openTargetIndex, session: prepared.session)
-            dragOffset = 0
+            setPageIndexWithoutAnimation(
+                BookOpenPipeline.clampedIndex(openTargetIndex, session: prepared.session)
+            )
         } catch {
             session = nil
             loadFailed = true
+        }
+    }
+
+    private func setPageIndexWithoutAnimation(_ index: Int) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            virtualIndex = index
+            crossfadeFromIndex = nil
+            crossfadeProgress = 1
+            isCrossfading = false
         }
     }
 
