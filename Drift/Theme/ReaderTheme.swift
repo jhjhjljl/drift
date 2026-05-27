@@ -3,15 +3,16 @@ import SwiftUI
 /// Single fixed preset (v1: no user settings). System background + label; Georgia body.
 enum ReaderTheme {
     /// Bump when typography, normalizer, or paginator changes to invalidate pagination caches.
-    static let layoutVersion = 2
+    static let layoutVersion = 3
 
     static let background = Color(uiColor: .systemBackground)
     static let text = Color(uiColor: .label)
     static let uiBackground = UIColor.systemBackground
     static let uiText = UIColor.label
 
-    static let font = Font.custom("Georgia", size: 20)
-    static let lineSpacing: CGFloat = 8
+    static let bodyFontSize: CGFloat = 22
+    static let font = Font.custom("Georgia", size: bodyFontSize)
+    static let lineSpacing: CGFloat = 9
     static let horizontalPadding: CGFloat = 28
     static let verticalPadding: CGFloat = 44
 
@@ -37,7 +38,7 @@ enum ReaderTheme {
         return NSAttributedString(
             string: text,
             attributes: [
-                .font: UIFont(name: "Georgia", size: 20) ?? .systemFont(ofSize: 20),
+                .font: UIFont(name: "Georgia", size: bodyFontSize) ?? .systemFont(ofSize: bodyFontSize),
                 .foregroundColor: uiText,
                 .paragraphStyle: paragraph,
             ]
