@@ -8,6 +8,10 @@ private enum ReaderPaging {
     static let rubberBandFactor: CGFloat = 0.35
 }
 
+private enum ReaderOverlayMotion {
+    static let animation = Animation.easeOut(duration: 0.15)
+}
+
 struct ReaderView: View {
     @Environment(AppModel.self) private var appModel
 
@@ -55,18 +59,22 @@ struct ReaderView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
-                if showOverlay, !loadFailed {
-                    ReaderOverlay(
-                        title: book.displayTitle,
-                        positionLabel: positionLabel(for: session),
-                        isFixedPage: isFixedPage,
-                        onLibrary: {
-                            hideOverlay()
-                            appModel.closeReader()
-                        }
-                    )
-                    .transition(.opacity)
+                Group {
+                    if showOverlay, !loadFailed {
+                        ReaderOverlay(
+                            title: book.displayTitle,
+                            positionLabel: positionLabel(for: session),
+                            isFixedPage: isFixedPage,
+                            onDismiss: hideOverlay,
+                            onLibrary: {
+                                hideOverlay()
+                                appModel.closeReader()
+                            }
+                        )
+                        .transition(.opacity)
+                    }
                 }
+                .animation(ReaderOverlayMotion.animation, value: showOverlay)
             }
             .contentShape(Rectangle())
             .gesture(pageDragGesture(session: session, pageHeight: proxy.size.height))
@@ -205,7 +213,9 @@ struct ReaderView: View {
 
         if isStrictTap(translation: value.translation, velocity: value.velocity) {
             snapBack()
-            presentOverlay()
+            if !showOverlay {
+                presentOverlay()
+            }
             return
         }
 
@@ -329,26 +339,20 @@ struct ReaderView: View {
     }
 
     private func presentOverlay() {
-        withAnimation(.easeOut(duration: 0.15)) {
-            showOverlay = true
-        }
+        showOverlay = true
         overlayTask?.cancel()
         overlayTask = Task {
             try? await Task.sleep(for: .seconds(2.5))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    showOverlay = false
-                }
+                showOverlay = false
             }
         }
     }
 
     private func hideOverlay() {
         overlayTask?.cancel()
-        withAnimation(.easeOut(duration: 0.15)) {
-            showOverlay = false
-        }
+        showOverlay = false
     }
 
     private func persistPosition(session: ReaderSession) {
@@ -389,34 +393,41 @@ private struct ReaderOverlay: View {
     let title: String
     let positionLabel: String?
     let isFixedPage: Bool
+    let onDismiss: () -> Void
     let onLibrary: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(ReaderTheme.text.opacity(0.85))
-                .lineLimit(1)
+        ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onDismiss)
 
-            if let positionLabel {
-                Text(positionLabel)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(ReaderTheme.text.opacity(0.65))
+            VStack(spacing: 12) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(ReaderTheme.text.opacity(0.85))
+                    .lineLimit(1)
+
+                if let positionLabel {
+                    Text(positionLabel)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(ReaderTheme.text.opacity(0.65))
+                }
+
+                if isFixedPage {
+                    Text("Original page")
+                        .font(.caption)
+                        .foregroundStyle(ReaderTheme.text.opacity(0.55))
+                }
+
+                Button("Library", action: onLibrary)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(ReaderTheme.text)
             }
-
-            if isFixedPage {
-                Text("Original page")
-                    .font(.caption)
-                    .foregroundStyle(ReaderTheme.text.opacity(0.55))
-            }
-
-            Button("Library", action: onLibrary)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(ReaderTheme.text)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
