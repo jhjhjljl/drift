@@ -323,8 +323,13 @@ struct ReaderView: View {
                 return
             }
 
+            // If the reader progressed while pages were streaming in, keep that location instead
+            // of snapping back to the original open target when loading completes.
+            let completionTargetIndex = virtualIndex == openTargetIndex
+                ? openTargetIndex
+                : virtualIndex
             setPageIndexWithoutAnimation(
-                BookOpenPipeline.clampedIndex(openTargetIndex, session: prepared.session)
+                BookOpenPipeline.clampedIndex(completionTargetIndex, session: prepared.session)
             )
         } catch {
             session = nil
