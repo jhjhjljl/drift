@@ -58,6 +58,7 @@ struct ReaderView: View {
                 if showOverlay, !loadFailed {
                     ReaderOverlay(
                         title: book.displayTitle,
+                        positionLabel: positionLabel(for: session),
                         isFixedPage: isFixedPage,
                         onLibrary: {
                             hideOverlay()
@@ -140,6 +141,15 @@ struct ReaderView: View {
         guard let session, let screen = session.screen(at: virtualIndex) else { return false }
         if case .fixed = screen { return true }
         return false
+    }
+
+    private func positionLabel(for session: ReaderSession?) -> String? {
+        guard let session else { return nil }
+        return ReaderPositionLabel.text(
+            currentIndex: virtualIndex,
+            totalScreens: session.totalScreens,
+            isComplete: session.isComplete
+        )
     }
 
     private func pageDragGesture(session: ReaderSession?, pageHeight: CGFloat) -> some Gesture {
@@ -377,6 +387,7 @@ private struct ReaderLoadFailedView: View {
 
 private struct ReaderOverlay: View {
     let title: String
+    let positionLabel: String?
     let isFixedPage: Bool
     let onLibrary: () -> Void
 
@@ -386,6 +397,12 @@ private struct ReaderOverlay: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(ReaderTheme.text.opacity(0.85))
                 .lineLimit(1)
+
+            if let positionLabel {
+                Text(positionLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(ReaderTheme.text.opacity(0.65))
+            }
 
             if isFixedPage {
                 Text("Original page")
