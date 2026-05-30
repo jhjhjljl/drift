@@ -1,6 +1,6 @@
 # Drift
 
-Kindle-like PDF novel reader for iPhone.
+Kindle-like PDF novel reader for iPhone. I primarily built it for myself so that I can read pirated PDF novels on my phone.
 
 ## Open in Xcode
 
